@@ -1,0 +1,85 @@
+---
+- hosts: all
+  handlers:
+    - name: restart apache
+      service:
+        name: apache2
+        state: restarted
+      become: yes
+
+  tasks:
+    - name: 'Instala pacotes de dependecia do SO'
+      apt:
+        update_cache: yes
+        name: [
+          'php',
+          'apache2',
+          'libapache2-mod-php',
+          'mysql-server',
+          'python3-mysqldb',
+        ]
+        state: latest
+      become: yes
+
+    - name: 'Instala modulos do PHP'
+      apt:
+        name: [
+          'php-cli',
+          'php-common',
+          'php-mbstring',
+          'php-gd',
+          'php-intl',
+          'php-xml',
+          'php-mysql',
+          'php-zip',
+        ]
+        state: latest
+      become: yes
+
+    - name: 'Cria o banco do MySQL'
+      mysql_db:
+        name: wordpress_db
+        state: present
+      become: yes
+
+    - name: 'Cria usuario do MySQL'
+      mysql_user:
+        name: wordpress_user
+        password: '12345'
+        priv: 'wordpress_db.*:ALL'
+        state: present
+      become: yes
+
+    - name: 'Baixa e descompacta o wordpress'
+      unarchive:
+        src: https://br.wordpress.org/latest-pt_BR.tar.gz
+        dest: /var/www/
+        remote_src: yes
+      become: yes
+
+    - name: 'Copia o arquivo sample de configuracao do wordpress'
+      copy:
+        src: '/var/www/wordpress/wp-config-sample.php'
+        dest: '/var/www/wordpress/wp-config.php'
+        remote_src: yes
+      become: yes
+
+    - name: 'Configura o wp-config com as entradas do banco de dados'
+      replace:
+        path: '/var/www/wordpress/wp-config.php'
+        regexp: "{{ item.regex }}"
+        replace: "{{ item.value }}"
+        backup: yes
+      with_items:
+        - { regex: 'database_name_here', value: 'wordpress_db' }
+        - { regex: 'username_here', value: 'wordpress_user' }
+        - { regex: 'password_here', value: '12345' }
+      become: yes
+
+    - name: 'Configura Apache para servir o Wordpress'
+      copy:
+       src: 'files/000-default.conf'
+       dest: '/etc/apache2/sites-available/000-default.conf'
+      become: yes
+      notify:
+        - restart apache
